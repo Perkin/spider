@@ -17,11 +17,10 @@ class SpiderSolitaire {
         this.selectedCol = null;
         this.isDragging = false;
         this.dragData = null;
-        this.suitCount = 1; // по умолчанию 1 масть
+        this.suitCount = 1;
 
         const saved = this.loadFromStorage();
         if (saved) {
-            // Если есть сохранённая игра — загружаем её без показа модалки
             this.columns = saved.columns;
             this.stock = saved.stock;
             this.completedSets = saved.completedSets;
@@ -32,9 +31,10 @@ class SpiderSolitaire {
             this.render();
             this.updateScore();
         } else {
-            // Нет сохранённой игры — показываем выбор сложности
-            this.showDifficultyModal();
+            const lastDiff = this.getLastDifficulty();
+            this.suitCount = lastDiff;
             this.bindEvents();
+            this.init();
         }
     }
 
@@ -46,6 +46,24 @@ class SpiderSolitaire {
         document.getElementById('difficulty-overlay').classList.add('hidden');
     }
 
+    getLastDifficulty() {
+        try {
+            const diff = localStorage.getItem('spider-solitaire-difficulty');
+            if (diff) return parseInt(diff);
+        } catch(e) {
+            // ignore
+        }
+        return 1;
+    }
+
+    setLastDifficulty(difficulty) {
+        try {
+            localStorage.setItem('spider-solitaire-difficulty', difficulty.toString());
+        } catch(e) {
+            // ignore
+        }
+    }
+
     getSuits() {
         return ALL_SUITS.slice(0, this.suitCount);
     }
@@ -53,7 +71,6 @@ class SpiderSolitaire {
     createDeck() {
         const deck = [];
         const suits = this.getSuits();
-        // 8 полных наборов по 13 карт, распределённых по мастям
         for (let i = 0; i < 8; i++) {
             const suit = suits[i % suits.length];
             for (const rank of RANKS) {
@@ -83,6 +100,7 @@ class SpiderSolitaire {
             this.history = [];
             this.render();
             this.updateScore();
+            this.setLastDifficulty(this.suitCount);
             return;
         }
 
@@ -96,7 +114,6 @@ class SpiderSolitaire {
         this.selectedCards = null;
         this.selectedCol = null;
 
-        // Раздача: первые 4 колонки по 6 карт, остальные по 5
         let cardIdx = 0;
         for (let col = 0; col < 10; col++) {
             const count = col < 4 ? 6 : 5;
@@ -107,9 +124,7 @@ class SpiderSolitaire {
             }
         }
 
-        // Остаток в сток (50 карт)
         this.stock = deck.slice(cardIdx);
-        // Все карты стока рубашкой вверх
         this.stock.forEach(c => c.faceUp = false);
 
         this.render();
@@ -147,7 +162,6 @@ class SpiderSolitaire {
         localStorage.removeItem('spider-solitaire');
     }
 
-    // Сохранить состояние для отмены
     saveState(moveData) {
         this.history.push({
             columns: this.columns.map(col => col.map(c => ({ ...c }))),
@@ -157,7 +171,6 @@ class SpiderSolitaire {
             moves: this.moves,
             moveData: moveData || this._lastMove || null
         });
-        // Ограничим историю 50 ходами
         if (this.history.length > 50) {
             this.history.shift();
         }
@@ -169,8 +182,6 @@ class SpiderSolitaire {
         if (!colCards[cardIndex].faceUp) return false;
 
         const firstSuit = colCards[cardIndex].suit;
-        // Проверяем, что все карты от cardIndex до конца образуют последовательность по убыванию
-        // и все одной масти
         for (let i = cardIndex; i < colCards.length - 1; i++) {
             if (colCards[i].value !== colCards[i + 1].value + 1) {
                 return false;
@@ -185,30 +196,37 @@ class SpiderSolitaire {
     moveCards(fromCol, cardIndex, toCol) {
         if (fromCol === toCol) return false;
 
-        // Создаём объект хода ДО выполнения (чтобы saveState сохранил его в историю)
         const cards = this.columns[fromCol].slice(cardIndex);
         const moveData = { type: 'move', fromCol, toCol, cardIndex, count: cards.length };
 
-        // Сохраняем состояние ДО хода вместе с данными о том, какой ход будет сделан
         this.saveState(moveData);
 
-        // Выполняем ход
         this.columns[fromCol].splice(cardIndex);
         this.flipTopCard(fromCol);
         this.columns[toCol].push(...cards);
-        this.checkComplete(toCol);
+        const completion = this.checkComplete(toCol);
 
         this.moves++;
+        this.score = Math.max(0, this.score - 1); // Subtract 1 point, but don't go below 0
         this.updateScore();
-        this.render();
-        this.saveToStorage();
+        
+        if (completion) {
+            this.render();
+            this.saveToStorage();
+            this.animateCompletion(completion.positions);
+            this.checkWin();
+        } else {
+            this.render();
+            this.saveToStorage();
+        }
 
-        // Сохраняем позиции карт ПОСЛЕ render'a (где они сейчас, в toCol)
         const rects = [];
         const toColEl = document.querySelector(`.column[data-col="${toCol}"]`);
         if (toColEl) {
             const cardEls = toColEl.querySelectorAll('.card.front');
-            for (let i = cardEls.length - cards.length; i < cardEls.length; i++) {
+            const actualCards = Math.min(cards.length, cardEls.length);
+            for (let i = cardEls.length - actualCards; i < cardEls.length; i++) {
+                if (i < 0) continue;
                 const rect = cardEls[i].getBoundingClientRect();
                 rects.push({ left: rect.left, top: rect.top });
             }
@@ -228,35 +246,48 @@ class SpiderSolitaire {
 
     checkComplete(col) {
         const colCards = this.columns[col];
-        if (colCards.length < 13) return;
+        if (colCards.length < 13) return null;
 
-        // Проверяем последние 13 карт
         const start = colCards.length - 13;
         let complete = true;
         const firstSuit = colCards[start].suit;
         for (let i = 0; i < 12; i++) {
-            // Проверяем убывание значения
             if (colCards[start + i].value !== colCards[start + i + 1].value + 1) {
                 complete = false;
                 break;
             }
-            // Проверяем совпадение масти (для 2/4 мастей)
             if (colCards[start + i].suit !== firstSuit || colCards[start + i + 1].suit !== firstSuit) {
                 complete = false;
                 break;
             }
         }
 
-        if (complete && colCards[start].value === 13) { // K = 13
-            // Убираем последовательность
+        if (complete && colCards[start].value === 13) {
+            const colEl = document.querySelector(`.column[data-col="${col}"]`);
+            const positions = [];
+            for (let i = start; i < start + 13; i++) {
+                const cardEl = colEl.querySelector(`[data-idx="${i}"]`);
+                if (cardEl) {
+                    const rect = cardEl.getBoundingClientRect();
+                    positions.push({
+                        left: rect.left,
+                        top: rect.top,
+                        width: rect.width,
+                        height: rect.height,
+                        suit: colCards[i].suit
+                    });
+                }
+            }
+
             const removed = colCards.splice(start, 13);
             removed.forEach(c => c.faceUp = true);
             this.completedSets.push(removed);
             this.flipTopCard(col);
             this.score += 100;
-            this.render();
-            this.checkWin();
+            
+            return { col, positions };
         }
+        return null;
     }
 
     dealFromStock() {
@@ -267,7 +298,6 @@ class SpiderSolitaire {
             return;
         }
 
-        // Создаём объект хода ДО выполнения
         const dealtCols = [];
         for (let col = 0; col < 10; col++) {
             if (this.stock.length === 0) break;
@@ -275,28 +305,26 @@ class SpiderSolitaire {
         }
         const moveData = { type: 'deal', cols: dealtCols };
 
-        // Сохраняем состояние ДО раздачи
         this.saveState(moveData);
 
-        // Запоминаем позицию и размер карты стока ДО render (пока сток еще на месте)
         const stockEl = document.getElementById('stock-pile');
         const stockRect = stockEl ? stockEl.getBoundingClientRect() : null;
         const stockCenterX = stockRect ? stockRect.left + stockRect.width / 2 : 0;
         const stockCenterY = stockRect ? stockRect.top + stockRect.height / 2 : 0;
         
-        // Измеряем размер реальной карты в стоке до рендера
         const stockCardEl = stockEl ? stockEl.querySelector('.card.back') : null;
         const stockCardRect = stockCardEl ? stockCardEl.getBoundingClientRect() : null;
         const stockW = stockCardRect ? stockCardRect.width : 60;
         const stockH = stockCardRect ? stockCardRect.height : 84;
 
-        // Выполняем раздачу
+        const completions = [];
         for (let col = 0; col < 10; col++) {
             if (this.stock.length === 0) break;
             const card = this.stock.pop();
             card.faceUp = true;
             this.columns[col].push(card);
-            this.checkComplete(col);
+            const completion = this.checkComplete(col);
+            if (completion) completions.push(completion);
         }
 
         this._lastMove = moveData;
@@ -305,10 +333,8 @@ class SpiderSolitaire {
         this.updateScore();
         this.saveToStorage();
 
-        // Render - создаём все карты
         this.render();
 
-        // Сразу скрываем новые карты (чтобы не было мигания перед анимацией)
         const newCards = [];
         dealtCols.forEach((col) => {
             const colEl = document.querySelector(`.column[data-col="${col}"]`);
@@ -316,14 +342,9 @@ class SpiderSolitaire {
             const cards = colEl.querySelectorAll('.card.front');
             const topCard = cards[cards.length - 1];
             if (topCard) {
-                // Сохраняем содержимое карты для восстановления после flip
                 const cardContent = topCard.innerHTML;
                 topCard.dataset.cardContent = cardContent;
-                
-                // Скрываем сразу, чтобы не было видно "лишней" карты (visibility hidden сохраняет размеры)
                 topCard.style.visibility = 'hidden';
-                
-                // Очищаем содержимое и меняем класс front на back
                 topCard.innerHTML = '';
                 topCard.classList.remove('front');
                 topCard.classList.add('back');
@@ -331,8 +352,12 @@ class SpiderSolitaire {
             }
         });
 
-        // Анимация: карты вылетают из стока и раскладываются по колонкам
         this.animateDeal(dealtCols, newCards, stockCenterX, stockCenterY, stockW, stockH);
+        
+        if (completions.length > 0) {
+            const allPositions = completions.flatMap(c => c.positions);
+            this.animateCompletion(allPositions);
+        }
     }
 
     animateDeal(cols, newCards, stockCenterX, stockCenterY, stockW, stockH) {
@@ -343,10 +368,8 @@ class SpiderSolitaire {
             const origLeft = topCard.style.left || '';
             const origPosition = topCard.style.position || '';
             
-            // Начинаем анимацию с задержкой для эффекта "веера"
             const delay = idx * 30;
             setTimeout(() => {
-                // Сразу показываем карту, ставим в позицию стока (без анимации)
                 topCard.style.transition = 'none';
                 topCard.style.visibility = '';
                 topCard.style.position = 'fixed';
@@ -357,15 +380,12 @@ class SpiderSolitaire {
                 topCard.style.zIndex = '1000';
                 void topCard.offsetHeight;
                 
-                // Анимируем: летим в колонку + flip
                 topCard.style.transition = 'left 0.4s ease-out, top 0.4s ease-out, transform 0.4s ease-out';
                 topCard.style.left = (cardRect.left) + 'px';
                 topCard.style.top = (cardRect.top) + 'px';
                 topCard.style.transform = 'rotateY(180deg)';
                 
-                // После завершения полёта
                 setTimeout(() => {
-                    // Восстанавливаем DOM-позицию
                     topCard.style.position = origPosition;
                     topCard.style.left = origLeft;
                     topCard.style.top = origTop;
@@ -375,7 +395,6 @@ class SpiderSolitaire {
                     topCard.style.visibility = '';
                     topCard.style.zIndex = '';
                     
-                    // Меняем класс с back на front и показываем содержимое
                     topCard.classList.remove('back');
                     topCard.classList.add('front');
                     topCard.innerHTML = topCard.dataset.cardContent || '';
@@ -393,12 +412,11 @@ class SpiderSolitaire {
         }
     }
 
-    // Подсветка колонки куда можно положить
-    canDrop(col, cardValue, cardSuit) {
+    canDrop(col, cardValue) {
         const colCards = this.columns[col];
         if (colCards.length === 0) return true;
         const topCard = colCards[colCards.length - 1];
-        return topCard.value === cardValue + 1 && topCard.suit === cardSuit;
+        return topCard.value === cardValue + 1;
     }
 
     undo() {
@@ -415,15 +433,12 @@ class SpiderSolitaire {
         this.moves = state.moves;
         
         if (moveData && moveData.type === 'deal') {
-            // Сохраняем позиции карт ДО render
             const cardPositions = this.saveDealCardPositions(moveData.cols);
             
-            // Render обновляет DOM
             this.render();
             this.updateScore();
             this.saveToStorage();
             
-            // Создаём временные элементы для анимации (остальные карты не пропадают)
             if (cardPositions.length > 0) {
                 this.animateUndoDeal(cardPositions);
             }
@@ -432,7 +447,6 @@ class SpiderSolitaire {
             this.updateScore();
             this.saveToStorage();
 
-            // Анимация возврата карт
             if (moveData) {
                 this.animateUndo(moveData);
             }
@@ -467,7 +481,6 @@ class SpiderSolitaire {
         const targetX = stockRect.left + stockRect.width / 2;
         const targetY = stockRect.top + stockRect.height / 2;
 
-        // Создаём временные элементы для анимации
         cardPositions.forEach((pos, idx) => {
             const tempCard = document.createElement('div');
             tempCard.className = 'card front';
@@ -496,6 +509,70 @@ class SpiderSolitaire {
         });
     }
 
+    animateCompletion(positions) {
+        if (!positions || positions.length === 0) return;
+        
+        const foundationArea = document.getElementById('foundation-area');
+        const foundationRect = foundationArea.getBoundingClientRect();
+        
+        const foundationPile = foundationArea.querySelector('.foundation-pile');
+        let targetX, targetY;
+        if (foundationPile) {
+            const pileRect = foundationPile.getBoundingClientRect();
+            targetX = pileRect.left + pileRect.width / 2;
+            targetY = pileRect.top + pileRect.height / 2;
+        } else {
+            targetX = foundationRect.left + foundationRect.width / 2;
+            targetY = foundationRect.top + foundationRect.height / 2;
+        }
+
+        const tempCards = [];
+        positions.forEach((pos, idx) => {
+            const tempCard = document.createElement('div');
+            tempCard.className = 'card front';
+            if (pos.suit === '♥' || pos.suit === '♦') {
+                tempCard.classList.add('red');
+            }
+            tempCard.style.position = 'fixed';
+            tempCard.style.left = pos.left + 'px';
+            tempCard.style.top = pos.top + 'px';
+            tempCard.style.width = pos.width + 'px';
+            tempCard.style.height = pos.height + 'px';
+            tempCard.style.zIndex = '1001';
+            tempCard.style.transition = 'none';
+            tempCard.innerHTML = `
+                <span class="rank">K</span>
+                <span class="suit-corner">${pos.suit}</span>
+                <span class="suit-icon">${pos.suit}</span>
+            `;
+            document.body.appendChild(tempCard);
+            tempCards.push(tempCard);
+
+            const dx = targetX - (pos.left + pos.width / 2);
+            const dy = targetY - (pos.top + pos.height / 2);
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const duration = Math.min(0.6, Math.max(0.3, dist / 1000));
+
+            setTimeout(() => {
+                void tempCard.offsetHeight;
+                tempCard.style.transition = `transform ${duration}s ease-in, opacity ${duration}s ease-in`;
+                tempCard.style.transform = `translate(${dx}px, ${dy}px) scale(0.3)`;
+                tempCard.style.opacity = '0.5';
+                
+                const removeCard = () => {
+                    tempCard.style.transition = 'opacity 0.15s ease-out';
+                    tempCard.style.opacity = '0';
+                    setTimeout(() => {
+                        tempCard.remove();
+                    }, 150);
+                };
+                
+                tempCard.addEventListener('transitionend', removeCard, { once: true });
+                setTimeout(removeCard, duration * 1000 + 50);
+            }, idx * 25);
+        });
+    }
+
     animateUndo(lastMove) {
         if (lastMove.type === 'move') {
             const colEl = document.querySelector(`.column[data-col="${lastMove.fromCol}"]`);
@@ -505,7 +582,6 @@ class SpiderSolitaire {
             if (!rects || rects.length < count) return;
 
             for (let i = 0; i < count; i++) {
-                // Ищем карту по data-idx (учитывая, что между ними могут быть закрытые карты)
                 const cardEl = colEl.querySelector(`[data-idx="${lastMove.cardIndex + i}"]`);
                 if (!cardEl) continue;
 
@@ -513,22 +589,18 @@ class SpiderSolitaire {
                 const dx = rects[i].left - newRect.left;
                 const dy = rects[i].top - newRect.top;
 
-                // Сначала ставим карту на старую позицию (без анимации)
                 cardEl.style.transition = 'none';
                 cardEl.style.transform = `translate(${dx}px, ${dy}px)`;
                 cardEl.style.zIndex = '999';
 
-                // Принудительный reflow
                 void cardEl.offsetHeight;
 
-                // Теперь анимируем в новую позицию
                 cardEl.style.transition = 'transform 0.4s ease-out';
                 cardEl.style.transform = 'translate(0, 0)';
             }
         }
     }
 
-    // ============ RENDER ============
     render() {
         this.renderTableau();
         this.renderStock();
@@ -550,10 +622,9 @@ class SpiderSolitaire {
                 continue;
             }
 
-            const backOffset = 16;  // отступ для закрытых (больше, чтобы видеть количество)
-            const frontOffset = 30; // отступ для открытых
+            const backOffset = 16;
+            const frontOffset = 28;
 
-            // Находим длину стака (последовательность по убыванию с конца, одной масти)
             let stackLen = 0;
             for (let i = cards.length - 1; i >= 0; i--) {
                 if (!cards[i].faceUp) break;
@@ -570,7 +641,6 @@ class SpiderSolitaire {
             cards.forEach((card, idx) => {
                 const cardEl = document.createElement('div');
                 
-                // Считаем отступ: закрытые карты идут с минимальным шагом
                 let offset = 0;
                 let prevFaceUp = false;
                 for (let i = 0; i < idx; i++) {
@@ -581,7 +651,6 @@ class SpiderSolitaire {
                         offset += backOffset;
                     }
                 }
-                // Если эта карта закрытая, а предыдущая была открытой — небольшой зазор
                 if (!card.faceUp && prevFaceUp) {
                     offset += 8;
                 }
@@ -595,7 +664,6 @@ class SpiderSolitaire {
                     const color = card.suit === '♠' || card.suit === '♣' ? 'black' : 'red';
                     if (color === 'red') cardEl.classList.add('red');
 
-                    // Если карта не входит в стак — затемняем
                     if (idx < stackStart) {
                         cardEl.classList.add('blocked');
                     }
@@ -612,7 +680,6 @@ class SpiderSolitaire {
                 colEl.appendChild(cardEl);
             });
 
-            // Высота колонки
             const lastCard = cards[cards.length - 1];
             let totalHeight = 0;
             for (let i = 0; i < cards.length; i++) {
@@ -622,7 +689,6 @@ class SpiderSolitaire {
                     totalHeight += backOffset;
                 }
             }
-            // Если последняя закрытая — добавим место для открытых
             if (!lastCard.faceUp) totalHeight += 80;
             colEl.style.minHeight = Math.max(150, totalHeight + 80) + 'px';
         }
@@ -639,10 +705,9 @@ class SpiderSolitaire {
         for (let i = 0; i < show; i++) {
             const card = document.createElement('div');
             card.className = 'card back';
-            // Убираем прозрачность - все карты одинаково непрозрачные
             card.style.opacity = '1';
-            card.style.zIndex = show - i; // Верхние карты имеют больший z-index
-            card.style.top = (i * 12) + 'px'; // Небольшой отступ, чтобы видеть край каждой карты
+            card.style.zIndex = show - i;
+            card.style.top = (i * 12) + 'px';
             stockEl.appendChild(card);
         }
     }
@@ -650,29 +715,42 @@ class SpiderSolitaire {
     renderFoundation() {
         const area = document.getElementById('foundation-area');
         area.innerHTML = '';
-        this.completedSets.forEach((set, idx) => {
-            const pile = document.createElement('div');
-            pile.className = 'foundation-pile';
+        
+        const pile = document.createElement('div');
+        pile.className = 'foundation-pile';
+        
+        const showCards = Math.min(5, this.completedSets.length);
+        const startIdx = this.completedSets.length - showCards;
+        for (let i = 0; i < showCards; i++) {
+            const set = this.completedSets[startIdx + i];
+            const cardEl = document.createElement('div');
+            cardEl.className = 'card front foundation-card';
             
-            // Показываем до 5 карт
-            const showCards = Math.min(set.length, 5);
-            const start = set.length - showCards;
-            for (let i = start; i < set.length; i++) {
-                const card = set[i];
-                const cardEl = document.createElement('div');
-                cardEl.className = 'card front foundation-card';
-                if (i === set.length - 1) {
-                    cardEl.classList.add('top-card');
-                }
-                cardEl.innerHTML = `
-                    <span class="rank">${card.rank}</span>
-                    <span class="suit-icon">${card.suit}</span>
-                `;
-                pile.appendChild(cardEl);
-            }
+            cardEl.style.position = 'absolute';
+            cardEl.style.top = (i * 12) + 'px';
+            cardEl.style.left = '50%';
+            cardEl.style.transform = 'translateX(-50%)';
+            cardEl.style.zIndex = showCards - i;
             
-            area.appendChild(pile);
-        });
+            const suit = set[set.length - 1].suit;
+            const color = suit === '♠' || suit === '♣' ? 'black' : 'red';
+            if (color === 'red') cardEl.classList.add('red');
+            
+            cardEl.innerHTML = `
+                <span class="suit-icon" style="font-size:2rem;">${suit}</span>
+            `;
+            pile.appendChild(cardEl);
+        }
+        
+        pile.style.height = showCards > 0 ? (12 * (showCards - 1) + 84) + 'px' : '84px';
+        
+        area.appendChild(pile);
+        
+        const countEl = document.createElement('div');
+        countEl.id = 'foundation-count';
+        countEl.style.cssText = 'font-size:0.85rem;font-weight:700;background:rgba(0,0,0,0.3);padding:2px 8px;border-radius:5px;min-width:28px;text-align:center;margin-top:4px;';
+        countEl.textContent = this.completedSets.length;
+        area.appendChild(countEl);
     }
 
     updateScore() {
@@ -680,21 +758,34 @@ class SpiderSolitaire {
         document.getElementById('moves').textContent = this.moves;
     }
 
-    // ============ EVENTS ============
     bindEvents() {
-        // Кнопки выбора сложности
+        document.getElementById('difficulty-btn').addEventListener('click', () => {
+            this.showDifficultyModal();
+        });
+
+        document.getElementById('difficulty-close-btn').addEventListener('click', () => {
+            this.hideDifficultyModal();
+        });
+
         document.querySelectorAll('.diff-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.suitCount = parseInt(btn.dataset.suits);
+                this.setLastDifficulty(this.suitCount);
                 this.hideDifficultyModal();
                 this.clearStorage();
                 this.init();
             });
         });
 
-        // Кнопки
         document.getElementById('new-game-btn').addEventListener('click', () => {
-            this.showDifficultyModal();
+            const lastDiff = this.getLastDifficulty();
+            if (lastDiff > 0) {
+                this.suitCount = lastDiff;
+                this.clearStorage();
+                this.init();
+            } else {
+                this.showDifficultyModal();
+            }
         });
 
         document.getElementById('undo-btn').addEventListener('click', () => {
@@ -703,15 +794,20 @@ class SpiderSolitaire {
 
         document.getElementById('play-again-btn').addEventListener('click', () => {
             document.getElementById('win-overlay').classList.add('hidden');
-            this.showDifficultyModal();
+            const lastDiff = this.getLastDifficulty();
+            if (lastDiff > 0) {
+                this.suitCount = lastDiff;
+                this.clearStorage();
+                this.init();
+            } else {
+                this.showDifficultyModal();
+            }
         });
 
-        // Клик по стоку
         document.getElementById('stock-pile').addEventListener('click', () => {
             this.dealFromStock();
         });
 
-        // Двойной клик — автоперенос (десктоп)
         document.addEventListener('dblclick', (e) => {
             const cardEl = this.getCardFromEvent(e);
             if (!cardEl || cardEl.dataset.col === undefined) return;
@@ -721,38 +817,31 @@ class SpiderSolitaire {
             this.autoMove(col, idx);
         });
 
-        // Mouse events
         this.bindMouseEvents();
-
-        // Touch events
         this.bindTouchEvents();
     }
 
-    // Обработка тапа на мобилках — автоперенос
     handleTap(col, idx) {
         this.autoMove(col, idx);
     }
 
-    // Автоперенос при двойном клике (на мобилках — по тапу)
     autoMove(col, cardIndex) {
         if (!this.canMoveCards(col, cardIndex)) return;
 
         const movingCard = this.columns[col][cardIndex];
         const movingValue = movingCard.value;
 
-        // Ищем все подходящие колонки
         let bestCol = null;
         let bestLen = -1;
         let bestHasSameSuitStack = false;
 
         for (let i = 0; i < 10; i++) {
             if (i === col) continue;
-            if (!this.canDrop(i, movingValue, movingCard.suit)) continue;
+            if (!this.canDrop(i, movingValue)) continue;
 
             const colCards = this.columns[i];
             const targetTopCard = colCards.length > 0 ? colCards[colCards.length - 1] : null;
 
-            // Считаем длину стопки в колонке i (подряд открытые по убыванию с конца, одной масти)
             let stackLen = 0;
             for (let j = colCards.length - 1; j >= 0; j--) {
                 if (!colCards[j].faceUp) break;
@@ -765,10 +854,8 @@ class SpiderSolitaire {
                 }
             }
 
-            // Определяем, есть ли на целевой колонке стопка той же масти, что перемещаемая карта
             const hasSameSuitStack = targetTopCard !== null && targetTopCard.suit === movingCard.suit;
 
-            // Приоритет: сначала колонки с той же мастью, потом по длине стопки
             if (bestCol === null) {
                 bestCol = i;
                 bestLen = stackLen;
@@ -787,7 +874,6 @@ class SpiderSolitaire {
 
         if (bestCol === null) return;
 
-        // Сохраняем позиции карт ДО перемещения
         const fromColEl = document.querySelector(`.column[data-col="${col}"]`);
         const rects = [];
         const cards = this.columns[col];
@@ -801,13 +887,12 @@ class SpiderSolitaire {
 
         this.moveCards(col, cardIndex, bestCol);
 
-        // Анимация: карты летят со старой позиции на новую
         requestAnimationFrame(() => {
             const colEl = document.querySelector(`.column[data-col="${bestCol}"]`);
             if (!colEl || rects.length === 0) return;
 
             const allCards = colEl.querySelectorAll('.card.front');
-            const startIdx = allCards.length - rects.length;
+            const startIdx = Math.max(0, allCards.length - rects.length);
             for (let i = 0; i < rects.length; i++) {
                 const cardEl = allCards[startIdx + i];
                 if (!cardEl) continue;
@@ -815,13 +900,11 @@ class SpiderSolitaire {
                 const dx = rects[i].left - newRect.left;
                 const dy = rects[i].top - newRect.top;
                 
-                // Ставим на старую позицию
                 cardEl.style.transition = 'none';
                 cardEl.style.transform = `translate(${dx}px, ${dy}px)`;
                 cardEl.style.zIndex = '999';
                 void cardEl.offsetHeight;
                 
-                // Анимируем на новое место
                 cardEl.style.transition = 'transform 0.4s ease-out';
                 cardEl.style.transform = 'translate(0, 0)';
                 cardEl.addEventListener('transitionend', () => {
@@ -833,7 +916,6 @@ class SpiderSolitaire {
         });
     }
 
-    // ============ MOUSE DRAG & DROP ============
     bindMouseEvents() {
         let isDragging = false;
         let fromCol = null;
@@ -867,7 +949,6 @@ class SpiderSolitaire {
             ghost.style.left = (e.clientX - offsetX) + 'px';
             ghost.style.top = (e.clientY - offsetY) + 'px';
 
-            // Подсветка колонок
             this.highlightDropZones(e.clientX, e.clientY, fromCol, cardIdx);
         });
 
@@ -883,18 +964,24 @@ class SpiderSolitaire {
 
             if (targetCol !== null) {
                 const movingCard = this.columns[fromCol][cardIdx];
-                if (targetCol === fromCol || this.canDrop(targetCol, movingCard.value, movingCard.suit)) {
-                    this.moveCards(fromCol, cardIdx, targetCol);
+                if (targetCol === fromCol || this.canDrop(targetCol, movingCard.value)) {
+                    try {
+                        this.moveCards(fromCol, cardIdx, targetCol);
+                    } finally {
+                        this.cleanupDrag();
+                    }
+                } else {
+                    this.cleanupDrag();
                 }
+            } else {
+                this.cleanupDrag();
             }
 
-            this.cleanupDrag();
             fromCol = null;
             cardIdx = null;
         });
     }
 
-    // ============ TOUCH DRAG & DROP ============
     bindTouchEvents() {
         let isDragging = false;
         let fromCol = null;
@@ -924,7 +1011,6 @@ class SpiderSolitaire {
             offsetX = touch.clientX - rect.left;
             offsetY = touch.clientY - rect.top;
 
-            // Не начинаем перетаскивание сразу - ждём движения
             e.preventDefault();
         }, { passive: false });
 
@@ -935,7 +1021,6 @@ class SpiderSolitaire {
             const dx = touch.clientX - startX;
             const dy = touch.clientY - startY;
             
-            // Если движение больше 5px - начинаем перетаскивание
             if (!hasMoved && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
                 hasMoved = true;
                 isDragging = true;
@@ -953,7 +1038,6 @@ class SpiderSolitaire {
         }, { passive: false });
 
         document.addEventListener('touchend', (e) => {
-            // Если не было перетаскивания - это тап, делаем автоперенос
             if (!hasMoved && fromCol !== null && cardIdx !== null) {
                 this.handleTap(fromCol, cardIdx);
             }
@@ -964,13 +1048,22 @@ class SpiderSolitaire {
 
                 if (targetCol !== null) {
                     const movingCard = this.columns[fromCol][cardIdx];
-                    if (targetCol === fromCol || this.canDrop(targetCol, movingCard.value, movingCard.suit)) {
-                        this.moveCards(fromCol, cardIdx, targetCol);
+                    if (targetCol === fromCol || this.canDrop(targetCol, movingCard.value)) {
+                        try {
+                            this.moveCards(fromCol, cardIdx, targetCol);
+                        } finally {
+                            this.cleanupDrag();
+                        }
+                    } else {
+                        this.cleanupDrag();
                     }
+                } else {
+                    this.cleanupDrag();
                 }
+            } else {
+                this.cleanupDrag();
             }
             
-            this.cleanupDrag();
             isDragging = false;
             fromCol = null;
             cardIdx = null;
@@ -978,7 +1071,6 @@ class SpiderSolitaire {
         });
     }
 
-    // ============ HELPERS ============
     getCardFromEvent(e) {
         const el = document.elementFromPoint(e.clientX, e.clientY);
         if (!el) return null;
@@ -994,11 +1086,26 @@ class SpiderSolitaire {
         ghost.style.top = y + 'px';
 
         const cards = this.columns[col].slice(idx);
+        const backOffset = 16;
+        const frontOffset = 28;
+
+        let totalGhostHeight = 80;
+        if (cards.length > 1) {
+            totalGhostHeight += (cards.length - 1) * frontOffset;
+        }
+        ghost.style.height = totalGhostHeight + 'px';
+
         cards.forEach((card, i) => {
             const cardEl = document.createElement('div');
             cardEl.className = 'card front';
-            cardEl.style.position = 'relative';
-            cardEl.style.marginBottom = '-30px';
+            cardEl.style.position = 'absolute';
+            cardEl.style.left = '0';
+            cardEl.style.width = '80px';
+            cardEl.style.height = '112px';
+
+            const cardTop = (i === 0) ? 0 : (i * frontOffset);
+            cardEl.style.top = cardTop + 'px';
+
             const color = card.suit === '♠' || card.suit === '♣' ? 'black' : 'red';
             if (color === 'red') cardEl.classList.add('red');
             cardEl.innerHTML = `
@@ -1010,25 +1117,33 @@ class SpiderSolitaire {
         });
 
         document.body.appendChild(ghost);
+
+        const colEl = document.querySelector(`.column[data-col="${col}"]`);
+        if (colEl) {
+            for (let i = idx; i < this.columns[col].length; i++) {
+                const c = colEl.querySelector(`[data-idx="${i}"]`);
+                if (c) c.style.visibility = 'hidden';
+            }
+        }
     }
 
     removeDragGhost() {
         const existing = document.querySelector('.drag-ghost');
         if (existing) existing.remove();
+        const hiddenCards = document.querySelectorAll('.column .card.front[style*="visibility: hidden"]');
+        hiddenCards.forEach(el => el.style.visibility = '');
     }
 
     highlightDropZones(x, y, fromCol, cardIdx) {
-        // Убираем старую подсветку
         document.querySelectorAll('.column.highlight').forEach(el => el.classList.remove('highlight'));
 
-        // Не подсвечиваем, если нет активного перетаскивания
         if (!this.isDragging || fromCol === null || cardIdx === null) return;
 
         const col = this.getColumnAtPosition(x, y);
         if (col === null || col === fromCol) return;
 
         const movingCard = this.columns[fromCol][cardIdx];
-        if (this.canDrop(col, movingCard.value, movingCard.suit)) {
+        if (this.canDrop(col, movingCard.value)) {
             document.querySelector(`.column[data-col="${col}"]`).classList.add('highlight');
         }
     }
@@ -1050,17 +1165,20 @@ class SpiderSolitaire {
         document.body.style.cursor = '';
         this.isDragging = false;
         this.dragData = null;
-        // Сбрасываем локальные переменные в bindMouseEvents/bindTouchEvents через событие
     }
 
     newGame() {
         this.clearStorage();
         this.init();
     }
+
+    changeDifficulty(suitCount) {
+        this.suitCount = suitCount;
+        this.setLastDifficulty(suitCount);
+        this.clearStorage();
+        this.init();
+    }
 }
 
-// Start the game
 const game = new SpiderSolitaire();
-
-// Expose for debugging
 window.game = game;
