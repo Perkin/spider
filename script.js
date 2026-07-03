@@ -18,6 +18,7 @@ class SpiderSolitaire {
         this.isDragging = false;
         this.dragData = null;
         this.suitCount = 1;
+        this.currentShirt = 0;
 
         const saved = this.loadFromStorage();
         if (saved) {
@@ -27,12 +28,16 @@ class SpiderSolitaire {
             this.score = saved.score;
             this.moves = saved.moves;
             this.suitCount = saved.suitCount || 1;
+            if (saved.currentShirt !== undefined) {
+                this.currentShirt = saved.currentShirt;
+            }
             this.bindEvents();
             this.render();
             this.updateScore();
         } else {
             const lastDiff = this.getLastDifficulty();
             this.suitCount = lastDiff;
+            this.currentShirt = this.loadShirt();
             this.bindEvents();
             this.init();
         }
@@ -68,6 +73,87 @@ class SpiderSolitaire {
         return ALL_SUITS.slice(0, this.suitCount);
     }
 
+    getShirtStyle(index) {
+        const styles = {
+            0: 'linear-gradient(135deg, #2471a3 0%, #3498db 50%, #2980b9 100%)',
+            1: 'linear-gradient(135deg, #0e6655 0%, #148f77 50%, #1abc9c 100%)',
+            2: 'linear-gradient(135deg, #922b21 0%, #c0392b 50%, #e74c3c 100%)',
+            3: 'repeating-linear-gradient(45deg, #1a5276 0px, #1a5276 10px, #2980b9 10px, #2980b9 20px)',
+            4: 'radial-gradient(circle, #8e44ad 0%, #6c3483 100%)',
+            5: 'linear-gradient(135deg, #f1c40f 0%, #f39c12 50%, #e67e22 100%)',
+            6: 'linear-gradient(135deg, #641e16 0%, #922b21 50%, #b03a2e 100%)',
+            7: 'repeating-linear-gradient(0deg, #17a589 0px, #17a589 8px, #48c9b0 8px, #48c9b0 16px)',
+            8: 'linear-gradient(135deg, #f0b27a 0%, #b9770e 50%, #7d6608 100%)',
+            9: 'repeating-linear-gradient(90deg, #5d4037 0px, #5d4037 12px, #795548 12px, #795548 24px)',
+            10: 'linear-gradient(135deg, #2c3e50 0%, #34495e 50%, #7f8c8d 100%)',
+            11: 'conic-gradient(from 45deg, #e74c3c, #f1c40f, #2ecc71, #3498db, #9b59b6, #e74c3c)',
+            12: 'repeating-linear-gradient(90deg, #c0392b 0px, #c0392b 8px, #ecf0f1 8px, #ecf0f1 16px)',
+            13: 'linear-gradient(135deg, #16a085 0%, #2ecc71 100%)',
+            14: 'repeating-conic-gradient(#8e44ad 0% 25%, #af7ac5 0% 50%)',
+            15: 'linear-gradient(135deg, #d35400 0%, #e67e22 50%, #f39c12 100%)',
+            16: 'repeating-linear-gradient(45deg, #2c3e50 0px, #2c3e50 10px, #34495e 10px, #34495e 20px)',
+            17: 'radial-gradient(circle at 30% 30%, #f1c40f 0%, #e67e22 50%, #d35400 100%)',
+            18: 'linear-gradient(135deg, #27ae60 0%, #2ecc71 50%, #58d68d 100%)',
+            19: 'repeating-linear-gradient(135deg, #2980b9 0px, #2980b9 6px, #3498db 6px, #3498db 12px)'
+        };
+        return styles[index] || styles[0];
+    }
+
+    getShirtBorder(index) {
+        const borders = {
+            0: '#2471a3',
+            1: '#0e6655',
+            2: '#922b21',
+            3: '#1a5276',
+            4: '#6c3483',
+            5: '#9a7d0a',
+            6: '#641e16',
+            7: '#117a65',
+            8: '#7d6608',
+            9: '#5d4037',
+            10: '#2c3e50',
+            11: '#8e44ad',
+            12: '#c0392b',
+            13: '#16a085',
+            14: '#6c3483',
+            15: '#d35400',
+            16: '#2c3e50',
+            17: '#e67e22',
+            18: '#27ae60',
+            19: '#2980b9'
+        };
+        return borders[index] || '#2471a3';
+    }
+
+    loadShirt() {
+        try {
+            const saved = localStorage.getItem('spider-solitaire-shirt');
+            if (saved) return parseInt(saved);
+        } catch (e) {}
+        return 0;
+    }
+
+    saveShirt() {
+        try {
+            localStorage.setItem('spider-solitaire-shirt', this.currentShirt.toString());
+        } catch (e) {}
+    }
+
+    showShirtModal() {
+        document.getElementById('shirt-overlay').classList.remove('hidden');
+    }
+
+    hideShirtModal() {
+        document.getElementById('shirt-overlay').classList.add('hidden');
+    }
+
+    setShirt(index) {
+        this.currentShirt = index;
+        this.saveShirt();
+        this.saveToStorage();
+        this.render();
+    }
+
     createDeck() {
         const deck = [];
         const suits = this.getSuits();
@@ -97,6 +183,9 @@ class SpiderSolitaire {
             this.score = saved.score;
             this.moves = saved.moves;
             this.suitCount = saved.suitCount || 1;
+            if (saved.currentShirt !== undefined) {
+                this.currentShirt = saved.currentShirt;
+            }
             this.history = [];
             this.render();
             this.updateScore();
@@ -140,7 +229,8 @@ class SpiderSolitaire {
                 completedSets: this.completedSets,
                 score: this.score,
                 moves: this.moves,
-                suitCount: this.suitCount
+                suitCount: this.suitCount,
+                currentShirt: this.currentShirt
             };
             localStorage.setItem('spider-solitaire', JSON.stringify(state));
         } catch(e) {
@@ -207,7 +297,7 @@ class SpiderSolitaire {
         const completion = this.checkComplete(toCol);
 
         this.moves++;
-        this.score = Math.max(0, this.score - 1); // Subtract 1 point, but don't go below 0
+        this.score = Math.max(0, this.score - 1);
         this.updateScore();
         
         if (completion) {
@@ -674,7 +764,9 @@ class SpiderSolitaire {
                         <span class="suit-icon">${card.suit}</span>
                     `;
                 } else {
-                    cardEl.className = 'card back';
+                    cardEl.className = 'card back shirt-' + this.currentShirt;
+                    cardEl.style.background = this.getShirtStyle(this.currentShirt);
+                    cardEl.style.borderColor = this.getShirtBorder(this.currentShirt);
                 }
 
                 colEl.appendChild(cardEl);
@@ -702,9 +794,13 @@ class SpiderSolitaire {
 
         stockEl.innerHTML = '';
         const show = Math.min(5, deals);
+        const shirtStyle = this.getShirtStyle(this.currentShirt);
+        const shirtBorder = this.getShirtBorder(this.currentShirt);
         for (let i = 0; i < show; i++) {
             const card = document.createElement('div');
-            card.className = 'card back';
+            card.className = 'card back shirt-' + this.currentShirt;
+            card.style.background = shirtStyle;
+            card.style.borderColor = shirtBorder;
             card.style.opacity = '1';
             card.style.zIndex = show - i;
             card.style.top = (i * 12) + 'px';
@@ -761,6 +857,21 @@ class SpiderSolitaire {
     bindEvents() {
         document.getElementById('difficulty-btn').addEventListener('click', () => {
             this.showDifficultyModal();
+        });
+
+        document.getElementById('shirt-btn').addEventListener('click', () => {
+            this.showShirtModal();
+        });
+
+        document.getElementById('shirt-close-btn').addEventListener('click', () => {
+            this.hideShirtModal();
+        });
+
+        document.querySelectorAll('.shirt-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.setShirt(parseInt(btn.dataset.shirt));
+                this.hideShirtModal();
+            });
         });
 
         document.getElementById('difficulty-close-btn').addEventListener('click', () => {
