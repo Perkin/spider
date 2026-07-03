@@ -1,9 +1,9 @@
 // Spider Solitaire - Пасьянс Паук
-// 1 масть (пики) - Medium сложность
+// Поддержка 1, 2 и 4 мастей
 
-const SUITS = ['♠'];
 const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 const RANK_VALUES = { 'A': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13 };
+const ALL_SUITS = ['♠', '♥', '♣', '♦'];
 
 class SpiderSolitaire {
     constructor() {
@@ -17,16 +17,47 @@ class SpiderSolitaire {
         this.selectedCol = null;
         this.isDragging = false;
         this.dragData = null;
+        this.suitCount = 1; // по умолчанию 1 масть
 
-        this.init();
-        this.bindEvents();
+        const saved = this.loadFromStorage();
+        if (saved) {
+            // Если есть сохранённая игра — загружаем её без показа модалки
+            this.columns = saved.columns;
+            this.stock = saved.stock;
+            this.completedSets = saved.completedSets;
+            this.score = saved.score;
+            this.moves = saved.moves;
+            this.suitCount = saved.suitCount || 1;
+            this.bindEvents();
+            this.render();
+            this.updateScore();
+        } else {
+            // Нет сохранённой игры — показываем выбор сложности
+            this.showDifficultyModal();
+            this.bindEvents();
+        }
+    }
+
+    showDifficultyModal() {
+        document.getElementById('difficulty-overlay').classList.remove('hidden');
+    }
+
+    hideDifficultyModal() {
+        document.getElementById('difficulty-overlay').classList.add('hidden');
+    }
+
+    getSuits() {
+        return ALL_SUITS.slice(0, this.suitCount);
     }
 
     createDeck() {
         const deck = [];
+        const suits = this.getSuits();
+        // 8 полных наборов по 13 карт, распределённых по мастям
         for (let i = 0; i < 8; i++) {
+            const suit = suits[i % suits.length];
             for (const rank of RANKS) {
-                deck.push({ suit: '♠', rank, value: RANK_VALUES[rank], faceUp: false });
+                deck.push({ suit, rank, value: RANK_VALUES[rank], faceUp: false });
             }
         }
         return this.shuffle(deck);
@@ -48,6 +79,7 @@ class SpiderSolitaire {
             this.completedSets = saved.completedSets;
             this.score = saved.score;
             this.moves = saved.moves;
+            this.suitCount = saved.suitCount || 1;
             this.history = [];
             this.render();
             this.updateScore();
@@ -92,7 +124,8 @@ class SpiderSolitaire {
                 stock: this.stock,
                 completedSets: this.completedSets,
                 score: this.score,
-                moves: this.moves
+                moves: this.moves,
+                suitCount: this.suitCount
             };
             localStorage.setItem('spider-solitaire', JSON.stringify(state));
         } catch(e) {
@@ -135,9 +168,14 @@ class SpiderSolitaire {
         if (cardIndex < 0 || cardIndex >= colCards.length) return false;
         if (!colCards[cardIndex].faceUp) return false;
 
+        const firstSuit = colCards[cardIndex].suit;
         // Проверяем, что все карты от cardIndex до конца образуют последовательность по убыванию
+        // и все одной масти
         for (let i = cardIndex; i < colCards.length - 1; i++) {
             if (colCards[i].value !== colCards[i + 1].value + 1) {
+                return false;
+            }
+            if (colCards[i].suit !== firstSuit || colCards[i + 1].suit !== firstSuit) {
                 return false;
             }
         }
@@ -195,8 +233,15 @@ class SpiderSolitaire {
         // Проверяем последние 13 карт
         const start = colCards.length - 13;
         let complete = true;
+        const firstSuit = colCards[start].suit;
         for (let i = 0; i < 12; i++) {
+            // Проверяем убывание значения
             if (colCards[start + i].value !== colCards[start + i + 1].value + 1) {
+                complete = false;
+                break;
+            }
+            // Проверяем совпадение масти (для 2/4 мастей)
+            if (colCards[start + i].suit !== firstSuit || colCards[start + i + 1].suit !== firstSuit) {
                 complete = false;
                 break;
             }
@@ -349,10 +394,11 @@ class SpiderSolitaire {
     }
 
     // Подсветка колонки куда можно положить
-    canDrop(col, cardValue) {
+    canDrop(col, cardValue, cardSuit) {
         const colCards = this.columns[col];
         if (colCards.length === 0) return true;
-        return colCards[colCards.length - 1].value === cardValue + 1;
+        const topCard = colCards[colCards.length - 1];
+        return topCard.value === cardValue + 1 && topCard.suit === cardSuit;
     }
 
     undo() {
@@ -507,13 +553,13 @@ class SpiderSolitaire {
             const backOffset = 16;  // отступ для закрытых (больше, чтобы видеть количество)
             const frontOffset = 30; // отступ для открытых
 
-            // Находим длину стака (последовательность по убыванию с конца)
+            // Находим длину стака (последовательность по убыванию с конца, одной масти)
             let stackLen = 0;
             for (let i = cards.length - 1; i >= 0; i--) {
                 if (!cards[i].faceUp) break;
                 if (i === cards.length - 1) {
                     stackLen = 1;
-                } else if (cards[i].value === cards[i + 1].value + 1) {
+                } else if (cards[i].value === cards[i + 1].value + 1 && cards[i].suit === cards[i + 1].suit) {
                     stackLen++;
                 } else {
                     break;
@@ -636,12 +682,19 @@ class SpiderSolitaire {
 
     // ============ EVENTS ============
     bindEvents() {
-        // Кнопки
-        document.getElementById('new-game-btn').addEventListener('click', () => {
-            if (confirm('Начать новую игру?')) {
+        // Кнопки выбора сложности
+        document.querySelectorAll('.diff-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.suitCount = parseInt(btn.dataset.suits);
+                this.hideDifficultyModal();
                 this.clearStorage();
                 this.init();
-            }
+            });
+        });
+
+        // Кнопки
+        document.getElementById('new-game-btn').addEventListener('click', () => {
+            this.showDifficultyModal();
         });
 
         document.getElementById('undo-btn').addEventListener('click', () => {
@@ -650,7 +703,7 @@ class SpiderSolitaire {
 
         document.getElementById('play-again-btn').addEventListener('click', () => {
             document.getElementById('win-overlay').classList.add('hidden');
-            this.init();
+            this.showDifficultyModal();
         });
 
         // Клик по стоку
@@ -690,26 +743,43 @@ class SpiderSolitaire {
         // Ищем все подходящие колонки
         let bestCol = null;
         let bestLen = -1;
+        let bestHasSameSuitStack = false;
 
         for (let i = 0; i < 10; i++) {
             if (i === col) continue;
-            if (!this.canDrop(i, movingValue)) continue;
+            if (!this.canDrop(i, movingValue, movingCard.suit)) continue;
 
-            // Считаем длину стопки в колонке i (подряд открытые по убыванию с конца)
             const colCards = this.columns[i];
+            const targetTopCard = colCards.length > 0 ? colCards[colCards.length - 1] : null;
+
+            // Считаем длину стопки в колонке i (подряд открытые по убыванию с конца, одной масти)
             let stackLen = 0;
             for (let j = colCards.length - 1; j >= 0; j--) {
                 if (!colCards[j].faceUp) break;
                 if (j === colCards.length - 1) {
                     stackLen = 1;
-                } else if (colCards[j].value === colCards[j + 1].value + 1) {
+                } else if (colCards[j].value === colCards[j + 1].value + 1 && colCards[j].suit === colCards[j + 1].suit) {
                     stackLen++;
                 } else {
                     break;
                 }
             }
 
-            if (stackLen > bestLen) {
+            // Определяем, есть ли на целевой колонке стопка той же масти, что перемещаемая карта
+            const hasSameSuitStack = targetTopCard !== null && targetTopCard.suit === movingCard.suit;
+
+            // Приоритет: сначала колонки с той же мастью, потом по длине стопки
+            if (bestCol === null) {
+                bestCol = i;
+                bestLen = stackLen;
+                bestHasSameSuitStack = hasSameSuitStack;
+            } else if (hasSameSuitStack && !bestHasSameSuitStack) {
+                bestCol = i;
+                bestLen = stackLen;
+                bestHasSameSuitStack = true;
+            } else if (!hasSameSuitStack && bestHasSameSuitStack) {
+                // keep current best
+            } else if (stackLen > bestLen) {
                 bestLen = stackLen;
                 bestCol = i;
             }
@@ -811,12 +881,12 @@ class SpiderSolitaire {
 
             const targetCol = this.getColumnAtPosition(e.clientX, e.clientY);
 
-                if (targetCol !== null) {
-                    const movingCard = this.columns[fromCol][cardIdx];
-                    if (targetCol === fromCol || this.canDrop(targetCol, movingCard.value)) {
-                        this.moveCards(fromCol, cardIdx, targetCol);
-                    }
+            if (targetCol !== null) {
+                const movingCard = this.columns[fromCol][cardIdx];
+                if (targetCol === fromCol || this.canDrop(targetCol, movingCard.value, movingCard.suit)) {
+                    this.moveCards(fromCol, cardIdx, targetCol);
                 }
+            }
 
             this.cleanupDrag();
             fromCol = null;
@@ -894,7 +964,7 @@ class SpiderSolitaire {
 
                 if (targetCol !== null) {
                     const movingCard = this.columns[fromCol][cardIdx];
-                    if (targetCol === fromCol || this.canDrop(targetCol, movingCard.value)) {
+                    if (targetCol === fromCol || this.canDrop(targetCol, movingCard.value, movingCard.suit)) {
                         this.moveCards(fromCol, cardIdx, targetCol);
                     }
                 }
@@ -958,7 +1028,7 @@ class SpiderSolitaire {
         if (col === null || col === fromCol) return;
 
         const movingCard = this.columns[fromCol][cardIdx];
-        if (this.canDrop(col, movingCard.value)) {
+        if (this.canDrop(col, movingCard.value, movingCard.suit)) {
             document.querySelector(`.column[data-col="${col}"]`).classList.add('highlight');
         }
     }

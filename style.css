@@ -420,6 +420,88 @@ button:active {
     background: #e67e22;
 }
 
+/* ========== DIFFICULTY MODAL ========== */
+#difficulty-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    backdrop-filter: blur(4px);
+}
+
+#difficulty-overlay.hidden {
+    display: none;
+}
+
+#difficulty-modal {
+    background: linear-gradient(135deg, #2d5a3d, #1a472a);
+    padding: 30px 40px;
+    border-radius: 16px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    border: 2px solid rgba(255,255,255,0.2);
+    max-width: 380px;
+}
+
+#difficulty-modal h2 {
+    font-size: 1.6rem;
+    margin-bottom: 8px;
+}
+
+#difficulty-modal p {
+    font-size: 1rem;
+    margin-bottom: 20px;
+    opacity: 0.8;
+}
+
+#difficulty-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.diff-btn {
+    padding: 14px 20px;
+    border: 2px solid rgba(255,255,255,0.15);
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    transition: all 0.2s;
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.diff-btn:hover {
+    background: rgba(255,255,255,0.18);
+    border-color: rgba(255,255,255,0.4);
+    filter: brightness(1.1);
+}
+
+.diff-btn:active {
+    transform: scale(0.97);
+}
+
+.diff-btn .diff-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.diff-btn .diff-desc {
+    font-size: 0.85rem;
+    opacity: 0.7;
+}
+
 /* ========== MOBILE ========== */
 @media (max-width: 700px) {
     #app {
