@@ -438,6 +438,9 @@ class SpiderSolitaire {
                 topCard.innerHTML = '';
                 topCard.classList.remove('front');
                 topCard.classList.add('back');
+                topCard.classList.add('shirt-' + this.currentShirt);
+                topCard.style.background = this.getShirtStyle(this.currentShirt);
+                topCard.style.borderColor = this.getShirtBorder(this.currentShirt);
                 newCards.push(topCard);
             }
         });
@@ -486,7 +489,10 @@ class SpiderSolitaire {
                     topCard.style.zIndex = '';
                     
                     topCard.classList.remove('back');
+                    topCard.classList.remove('shirt-' + this.currentShirt);
                     topCard.classList.add('front');
+                    topCard.style.background = '';
+                    topCard.style.borderColor = '';
                     topCard.innerHTML = topCard.dataset.cardContent || '';
                     delete topCard.dataset.cardContent;
                 }, 400);
@@ -619,7 +625,7 @@ class SpiderSolitaire {
         const tempCards = [];
         positions.forEach((pos, idx) => {
             const tempCard = document.createElement('div');
-            tempCard.className = 'card front';
+            tempCard.className = 'card front shirt-' + this.currentShirt;
             if (pos.suit === '♥' || pos.suit === '♦') {
                 tempCard.classList.add('red');
             }
@@ -630,6 +636,8 @@ class SpiderSolitaire {
             tempCard.style.height = pos.height + 'px';
             tempCard.style.zIndex = '1001';
             tempCard.style.transition = 'none';
+            tempCard.style.background = this.getShirtStyle(this.currentShirt);
+            tempCard.style.borderColor = this.getShirtBorder(this.currentShirt);
             tempCard.innerHTML = `
                 <span class="rank">K</span>
                 <span class="suit-corner">${pos.suit}</span>
