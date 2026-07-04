@@ -20,6 +20,8 @@ class SpiderSolitaire {
         this.suitCount = 1;
         this.currentShirt = 0;
 
+        this.registerSW();
+
         const saved = this.loadFromStorage();
         if (saved) {
             this.columns = saved.columns;
@@ -40,6 +42,14 @@ class SpiderSolitaire {
             this.currentShirt = this.loadShirt();
             this.bindEvents();
             this.init();
+        }
+    }
+
+    registerSW() {
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js')
+                .then(() => console.log('SW зарегистрирован'))
+                .catch((err) => console.log('Ошибка регистрации SW:', err));
         }
     }
 
