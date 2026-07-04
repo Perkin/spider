@@ -7,7 +7,7 @@ const STATIC_ASSETS = [
   '/spider/manifest.json',
   '/spider/icons/icon-192x192.png',
   '/spider/icons/icon-512x512.png',
-  '/icons/icon-maskable-512.png'
+  '/spider/icons/icon-maskable-512.png'
 ];
 
 self.addEventListener('install', (event) => {
