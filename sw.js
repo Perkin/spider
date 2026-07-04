@@ -1,27 +1,19 @@
-const CACHE_NAME = 'spider-v2';
+const CACHE_NAME = 'spider-v3';
 const STATIC_ASSETS = [
-  './',
-  './index.html',
-  './style.css',
-  './script.js',
-  './manifest.json',
-  './icons/icon-48x48.png',
-  './icons/icon-72x72.png',
-  './icons/icon-96x96.png',
-  './icons/icon-128x128.png',
-  './icons/icon-144x144.png',
-  './icons/icon-152x152.png',
-  './icons/icon-192x192.png',
-  './icons/icon-256x256.png',
-  './icons/icon-384x384.png',
-  './icons/icon-512x512.png',
+  '/spider/',
+  '/spider/index.html',
+  '/spider/style.css',
+  '/spider/script.js',
+  '/spider/manifest.json',
+  '/spider/icons/icon-192x192.png',
+  '/spider/icons/icon-512x512.png',
+  '/icons/icon-maskable-512.png'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
