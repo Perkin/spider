@@ -1,11 +1,19 @@
-const CACHE_NAME = 'spider-v3';
+const CACHE_NAME = 'spider-v4';
 const STATIC_ASSETS = [
   '/spider/',
   '/spider/index.html',
   '/spider/style.css',
   '/spider/script.js',
   '/spider/manifest.json',
+  '/spider/icons/icon-48x48.png',
+  '/spider/icons/icon-72x72.png',
+  '/spider/icons/icon-96x96.png',
+  '/spider/icons/icon-128x128.png',
+  '/spider/icons/icon-144x144.png',
+  '/spider/icons/icon-152x152.png',
   '/spider/icons/icon-192x192.png',
+  '/spider/icons/icon-256x256.png',
+  '/spider/icons/icon-384x384.png',
   '/spider/icons/icon-512x512.png',
   '/spider/icons/icon-maskable-512.png'
 ];
