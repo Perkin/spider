@@ -718,8 +718,8 @@ class SpiderSolitaire {
     getCardOffsets() {
         const isMobile = window.innerWidth <= 700;
         const isTiny = window.innerWidth <= 400;
-        if (isTiny) return { backOffset: 6, frontOffset: 12 };
-        if (isMobile) return { backOffset: 8, frontOffset: 16 };
+        if (isTiny) return { backOffset: 5, frontOffset: 10 };
+        if (isMobile) return { backOffset: 6, frontOffset: 12 };
         return { backOffset: 16, frontOffset: 28 };
     }
 
@@ -816,6 +816,14 @@ class SpiderSolitaire {
         const countEl = document.getElementById('stock-count');
         const deals = Math.ceil(this.stock.length / 10);
         countEl.textContent = deals;
+        
+        // Clear stock section but keep the label and count
+        const stockSection = document.getElementById('stock-section');
+        const label = stockSection.querySelector('#stock-label');
+        stockSection.innerHTML = '';
+        if (label) stockSection.appendChild(label);
+        stockSection.appendChild(countEl);
+        stockSection.appendChild(stockEl);
 
         stockEl.innerHTML = '';
         const show = Math.min(5, deals);
@@ -865,12 +873,11 @@ class SpiderSolitaire {
         
         pile.style.height = showCards > 0 ? (12 * (showCards - 1) + 84) + 'px' : '84px';
         
-        area.appendChild(pile);
-        
         const countEl = document.createElement('div');
         countEl.id = 'foundation-count';
         countEl.textContent = this.completedSets.length;
         area.appendChild(countEl);
+        area.appendChild(pile);
     }
 
     updateScore() {
