@@ -715,6 +715,14 @@ class SpiderSolitaire {
         this.renderFoundation();
     }
 
+    getCardOffsets() {
+        const isMobile = window.innerWidth <= 700;
+        const isTiny = window.innerWidth <= 400;
+        if (isTiny) return { backOffset: 6, frontOffset: 12 };
+        if (isMobile) return { backOffset: 8, frontOffset: 16 };
+        return { backOffset: 16, frontOffset: 28 };
+    }
+
     renderTableau() {
         for (let col = 0; col < 10; col++) {
             const colEl = document.querySelector(`.column[data-col="${col}"]`);
@@ -730,8 +738,7 @@ class SpiderSolitaire {
                 continue;
             }
 
-            const backOffset = 16;
-            const frontOffset = 28;
+            const { backOffset, frontOffset } = this.getCardOffsets();
 
             let stackLen = 0;
             for (let i = cards.length - 1; i >= 0; i--) {
@@ -760,7 +767,7 @@ class SpiderSolitaire {
                     }
                 }
                 if (!card.faceUp && prevFaceUp) {
-                    offset += 8;
+                    offset += 6;
                 }
 
                 cardEl.style.top = offset + 'px';
@@ -799,8 +806,8 @@ class SpiderSolitaire {
                     totalHeight += backOffset;
                 }
             }
-            if (!lastCard.faceUp) totalHeight += 80;
-            colEl.style.minHeight = Math.max(150, totalHeight + 80) + 'px';
+            const cardH = lastCard && lastCard.faceUp ? frontOffset * 3.5 : backOffset * 5;
+            colEl.style.minHeight = Math.max(150, totalHeight + cardH) + 'px';
         }
     }
 
@@ -862,7 +869,6 @@ class SpiderSolitaire {
         
         const countEl = document.createElement('div');
         countEl.id = 'foundation-count';
-        countEl.style.cssText = 'font-size:0.85rem;font-weight:700;background:rgba(0,0,0,0.3);padding:2px 8px;border-radius:5px;min-width:28px;text-align:center;margin-top:4px;';
         countEl.textContent = this.completedSets.length;
         area.appendChild(countEl);
     }
@@ -1215,10 +1221,12 @@ class SpiderSolitaire {
         ghost.style.top = y + 'px';
 
         const cards = this.columns[col].slice(idx);
-        const backOffset = 16;
-        const frontOffset = 28;
+        const { frontOffset } = this.getCardOffsets();
+        const isMobile = window.innerWidth <= 700;
+        const ghostW = isMobile ? 48 : 80;
+        const ghostH = isMobile ? 67 : 112;
 
-        let totalGhostHeight = 80;
+        let totalGhostHeight = ghostH;
         if (cards.length > 1) {
             totalGhostHeight += (cards.length - 1) * frontOffset;
         }
@@ -1229,8 +1237,8 @@ class SpiderSolitaire {
             cardEl.className = 'card front';
             cardEl.style.position = 'absolute';
             cardEl.style.left = '0';
-            cardEl.style.width = '80px';
-            cardEl.style.height = '112px';
+            cardEl.style.width = ghostW + 'px';
+            cardEl.style.height = ghostH + 'px';
 
             const cardTop = (i === 0) ? 0 : (i * frontOffset);
             cardEl.style.top = cardTop + 'px';
@@ -1307,7 +1315,17 @@ class SpiderSolitaire {
         this.clearStorage();
         this.init();
     }
+
+    onResize() {
+        this.render();
+    }
 }
 
 const game = new SpiderSolitaire();
 window.game = game;
+
+let resizeTimer;
+window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => game.onResize(), 150);
+});
